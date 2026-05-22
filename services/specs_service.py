@@ -1,4 +1,5 @@
 import re
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 
 import requests
@@ -69,6 +70,7 @@ OFFICIAL_SPEC_SOURCES = [
         page_parser="oneplus_generic",
     ),
 ]
+MAX_DISCOVERED_SPEC_FETCHES = 36
 
 
 def collect_official_specs() -> tuple[list[PhoneCandidate], str]:
@@ -77,10 +79,16 @@ def collect_official_specs() -> tuple[list[PhoneCandidate], str]:
     cached_count = 0
 
     discovered_sources, discovery_note = discover_official_spec_sources()
-    all_sources = _unique_sources([*OFFICIAL_SPEC_SOURCES, *discovered_sources])
+    all_sources = _unique_sources(
+        [*OFFICIAL_SPEC_SOURCES, *discovered_sources[:MAX_DISCOVERED_SPEC_FETCHES]]
+    )
 
-    for source in all_sources:
-        payload, origin = _load_source_payload(source)
+    with ThreadPoolExecutor(max_workers=6) as executor:
+        source_payloads = list(
+            zip(all_sources, executor.map(_load_source_payload, all_sources))
+        )
+
+    for source, (payload, origin) in source_payloads:
         if payload is None:
             continue
         candidate = _candidate_from_payload(source, payload)
@@ -109,7 +117,7 @@ def _load_source_payload(source: OfficialSpecSource) -> tuple[dict | None, str]:
         response = requests.get(
             source.source_url,
             headers={"User-Agent": "PhoneAIAgent/0.1"},
-            timeout=15,
+            timeout=10,
         )
         response.raise_for_status()
     except requests.RequestException:
@@ -134,6 +142,7 @@ def _candidate_from_payload(
         "iphone_generic": _parse_iphone_generic,
         "oneplus_12r": _parse_oneplus_12r,
         "oneplus_generic": _parse_oneplus_generic,
+        "generic_official": _parse_generic_official,
     }[source.page_parser]
     specs = parser(text)
     if specs is None:
@@ -213,6 +222,46 @@ def _parse_redmi_note_13_pro(text: str) -> dict | None:
         storage_gb=_largest_number(text, r"(\d+)\s*GB", 512),
         battery_mah=_number(text, r"([\d,]+)\s*mAh", 5100),
         charging_watt=_number(text, r"(\d+)\s*W", 67),
+    )
+
+
+def _parse_generic_official(text: str) -> dict | None:
+    screen_size = _first_number(
+        text,
+        [
+            r"(\d[.,]\d{1,2})\s*(?:inches|inch|inç)",
+            r"(?:Display|Ekran)[^0-9]{0,40}(\d[.,]\d{1,2})",
+        ],
+    )
+    battery = _first_number(text, [r"([\d.,]{4,6})\s*mAh"])
+    ram = _first_number(
+        text,
+        [
+            r"(?:RAM|Memory)[^0-9]{0,30}(\d{1,2})\s*GB",
+            r"(\d{1,2})\s*GB\s*(?:RAM|LPDDR)",
+        ],
+    )
+    storage = _largest_optional_number(
+        text,
+        [
+            r"(?:Storage|Capacity|Depolama|Hafıza)[^0-9]{0,40}(\d{2,4})\s*GB",
+            r"(\d{2,4})\s*GB\s*(?:Storage|ROM|UFS|Depolama)",
+            r"\b(64|128|256|512|1024)\s*GB\b",
+        ],
+    )
+    chipset = _generic_chipset(text)
+    if None in {screen_size, battery, ram, storage} or chipset is None:
+        return None
+    return _build_specs(
+        text,
+        chipset=chipset,
+        screen_type=_generic_screen_type(text),
+        refresh_rate=_generic_refresh_rate(text),
+        screen_size_in=float(screen_size),
+        ram_gb=int(ram),
+        storage_gb=int(storage),
+        battery_mah=int(battery),
+        charging_watt=int(_generic_charging_watt(text)),
     )
 
 
@@ -338,6 +387,39 @@ def _largest_number(text: str, pattern: str, fallback: int) -> int:
     return max(values) if values else fallback
 
 
+def _first_number(text: str, patterns: list[str]) -> float | int | None:
+    for pattern in patterns:
+        match = re.search(pattern, text, flags=re.IGNORECASE)
+        if match is None:
+            continue
+        value = _normalize_number_text(match.group(1))
+        if "." in value:
+            return float(value)
+        return int(value)
+    return None
+
+
+def _largest_optional_number(text: str, patterns: list[str]) -> int | None:
+    values = []
+    for pattern in patterns:
+        values.extend(
+            int(value.replace(".", ""))
+            for value in re.findall(pattern, text, flags=re.IGNORECASE)
+        )
+    return max(values) if values else None
+
+
+def _normalize_number_text(value: str) -> str:
+    normalized = value.strip()
+    if "," in normalized and "." in normalized:
+        return normalized.replace(".", "").replace(",", ".")
+    if "," in normalized:
+        return normalized.replace(",", ".")
+    if normalized.count(".") == 1 and len(normalized.split(".")[1]) == 3:
+        return normalized.replace(".", "")
+    return normalized
+
+
 def _between(text: str, start: str, end: str) -> str:
     if start not in text:
         return text
@@ -358,3 +440,43 @@ def _chipset_name(text: str, fallback: str) -> str:
         return fallback
     normalized = match.group(1).encode("ascii", "ignore").decode().strip()
     return normalized or fallback
+
+
+def _generic_chipset(text: str) -> str | None:
+    patterns = [
+        r"((?:Qualcomm\s+)?Snapdragon[^.;,\n]{0,45}(?:Gen\s*\d|Mobile Platform|\d{3}))",
+        r"((?:MediaTek\s+)?(?:Dimensity|Helio)\s+[A-Za-z]?\d{2,5}[A-Za-z0-9 ]{0,12})",
+        r"(Exynos\s+\d{3,4})",
+        r"(Tensor\s+G\d)",
+        r"(Unisoc\s+[A-Za-z0-9]+)",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, text, flags=re.IGNORECASE)
+        if match:
+            return " ".join(match.group(1).split())
+    return None
+
+
+def _generic_screen_type(text: str) -> str:
+    for screen_type in ("AMOLED", "OLED", "P-OLED", "IPS LCD", "LCD"):
+        if screen_type.casefold() in text.casefold():
+            return screen_type
+    return "Display"
+
+
+def _generic_refresh_rate(text: str) -> int:
+    values = [
+        int(value)
+        for value in re.findall(r"(\d{2,3})\s*Hz", text, flags=re.IGNORECASE)
+        if 60 <= int(value) <= 240
+    ]
+    return max(values) if values else 60
+
+
+def _generic_charging_watt(text: str) -> int:
+    values = [
+        int(value)
+        for value in re.findall(r"(\d{1,3})\s*W", text, flags=re.IGNORECASE)
+        if 5 <= int(value) <= 240
+    ]
+    return max(values) if values else 0

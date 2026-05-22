@@ -124,7 +124,10 @@ def get_market_prices(
             )
 
     collection = collect_price_observations(country, missing_price_phones)
-    return {**stored_prices, **_observed_usd_prices(collection.observations)}, collection
+    combined_prices = {**stored_prices, **_observed_usd_prices(collection.observations)}
+    if stored_prices and not collection.observations:
+        collection.note = f"Official specs with fresh Neon market prices. {collection.note}"
+    return combined_prices, collection
 
 
 def _observed_usd_prices(observations: list[PriceObservation]) -> dict[str, float]:

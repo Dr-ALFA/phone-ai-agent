@@ -71,7 +71,6 @@ def _fallback_explanation(
     recommendations = result.phones
     lines = [
         f"حسب ميزانيتك ${preferences.budget_usd:.0f} وأولوياتك الحالية، هذه أفضل الخيارات من المواصفات المتاحة:",
-        f"**حالة البيانات:** {result.data_note}",
         "",
     ]
     for index, item in enumerate(recommendations, start=1):

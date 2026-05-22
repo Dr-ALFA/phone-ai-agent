@@ -1,5 +1,7 @@
 # Phone AI Agent
 
+> ملاحظة: هذا الملف وثيقة عمل للمشروع، ونضيف الملاحظات العربية تحت العناوين مع الحفاظ على النص الأصلي.
+
 Phone AI Agent recommends phones from the user's budget, market, platform preference,
 important use cases, and exclusions.
 
@@ -8,6 +10,8 @@ The project is being built around one rule:
 > Data filters and scoring choose the phones. The AI explains the result.
 
 ## Current MVP
+
+> ملاحظة: هذا القسم يوضح ما يعمل الآن في النسخة الحالية.
 
 The first MVP already separates the main responsibilities:
 
@@ -36,6 +40,8 @@ phone set. It ranks only phones that have a real recent market price converted t
 from the price layer or loaded from Neon.
 
 ## User Workflow
+
+> ملاحظة: هذا هو مسار المستخدم داخل الواجهة.
 
 The user answers:
 
@@ -66,6 +72,8 @@ The app returns:
 
 ## System Workflow
 
+> ملاحظة: هذا هو مسار البيانات داخل النظام قبل عرض التوصية.
+
 ```text
 Streamlit UI
     |
@@ -90,6 +98,8 @@ supported phone set. Shopping price observations can come from SerpAPI and use N
 stored in `phone_prices` and the recommendation filter uses `price_usd`.
 
 ## Recommendation Logic
+
+> ملاحظة: الاختيار يتم بالكود والبيانات، والشرح فقط يمر عبر الذكاء الاصطناعي.
 
 Filtering happens before scoring:
 
@@ -116,6 +126,8 @@ so a light-use buyer is not pushed toward an expensive flagship without a reason
 
 ## Planned Architecture
 
+> ملاحظة: هذه البنية تساعدنا على توسيع المصادر والبلدان دون خلط الواجهة بالمنطق.
+
 ```text
 app.py
 agent.py
@@ -137,6 +149,8 @@ services/
 ```
 
 ## Neon Cache Plan
+
+> ملاحظة: Neon هنا cache ومخزن للبيانات المجمعة، وليست قاعدة إدخال يدوي للهواتف.
 
 Neon is intended as a short-lived cache, not a manually maintained catalog.
 
@@ -172,6 +186,8 @@ Suggested cache freshness:
 
 ## Data Source Direction
 
+> ملاحظة: نفضل المصادر الرسمية والـ APIs المنظمة كلما أمكن.
+
 Prefer APIs or structured search providers when available.
 
 Specs candidates:
@@ -193,6 +209,8 @@ Each provider should be isolated behind a service so data source changes do not 
 the UI or scoring engine.
 
 ## Search API Setup
+
+> ملاحظة: Tavily هو مزود اكتشاف صفحات المواصفات الحالي، وSerpAPI يبقى اختياريًا للأسعار.
 
 Tavily is the current search provider for official spec discovery:
 
@@ -220,6 +238,8 @@ fields or browser-side JavaScript.
 direct MediaMarkt and PttAVM price providers even without SerpAPI.
 
 ## Environment
+
+> ملاحظة: المفاتيح الحقيقية تبقى في `.env` ولا ترفع إلى GitHub.
 
 Install dependencies:
 
@@ -253,6 +273,8 @@ If Neon and the active providers have no fresh real market prices for the select
 country, the app will return no budget-ranked phones instead of using invented prices.
 
 ## Development Roadmap
+
+> ملاحظة: هذه الخطة تتغير مع كل مرحلة تطوير جديدة.
 
 ### Phase 1: MVP foundation
 
@@ -290,6 +312,8 @@ country, the app will return no budget-ranked phones instead of using invented p
 - Add recommendation history and feedback.
 
 ## Open Decisions
+
+> ملاحظة: هذه قرارات نراجعها مع اتساع البيانات والأسواق.
 
 These decisions should be revisited as the project evolves:
 

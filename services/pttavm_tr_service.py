@@ -1,4 +1,5 @@
 import json
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from urllib.parse import quote_plus
 
@@ -32,8 +33,9 @@ class PttAvmPriceResult:
 def search_pttavm_prices(phones: list[PhoneCandidate]) -> PttAvmPriceResult:
     observations: list[PriceObservation] = []
     origins: set[str] = set()
-    for phone in phones:
-        payload, origin = _search(phone)
+    with ThreadPoolExecutor(max_workers=6) as executor:
+        results = list(zip(phones, executor.map(_search, phones)))
+    for phone, (payload, origin) in results:
         origins.add(origin)
         observations.extend(_observations_from_payload(phone, payload))
 
@@ -57,7 +59,7 @@ def _search(phone: PhoneCandidate) -> tuple[dict | None, str]:
         response = requests.get(
             SEARCH_URL.format(query=quote_plus(query)),
             headers={"User-Agent": "Mozilla/5.0 PhoneAIAgent/0.1"},
-            timeout=20,
+            timeout=10,
         )
         response.raise_for_status()
     except requests.RequestException:
